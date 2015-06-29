@@ -1,0 +1,135 @@
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.util.Calendar;
+
+
+public class ReleaseCompiler extends Thread{
+	final static String androidPath = "your_release_directory";
+	final static String keystorePath = "your_keystore_path";
+	
+	public void run(){
+		String compilerName = this.getName(); // Getting the name of the thread
+		String projectPath, gradlePath, line, unsignedPath, fileStorePath;
+		Process p;
+		File file;
+		File gradleFile;
+		OutputStream out = null;
+		byte[] buffer = new byte[1024];		
+		
+		fileStorePath = androidPath+compilerName+".txt";
+		// Opens a new OutputStream in each thread
+		try {
+			out = new BufferedOutputStream( new FileOutputStream(fileStorePath));
+		} catch (FileNotFoundException e2) {}
+		// Verifying the path of the project
+		projectPath = "your_AndroidStudio_project_directory"+"your_project_name"; // Project path
+		file = new File(projectPath);
+		if(!file.exists() || !file.isDirectory())
+			try {
+				throw new FileNotFoundException("Malformated path");
+			} catch (FileNotFoundException e1) {}
+		else{
+			try {
+				// Verifying the execute permissions of the gradle
+				gradlePath = file.getAbsolutePath()+"/gradlew";
+				gradleFile = new File(gradlePath);
+				if(gradleFile.isFile() && !gradleFile.canExecute())	p = Runtime.getRuntime().exec("chmod +x "+gradlePath);				
+				if(gradleFile.isFile() && gradleFile.canExecute()){
+					Calendar cal = Calendar.getInstance();
+					out.write(cal.getTime().toString().getBytes());
+					// Generating the unsigned apk
+					p = generateUnsigned(gradlePath, file);
+					write(p, out, buffer);
+					line = getApkFileName(projectPath); // Getting the apk file name
+					unsignedPath = projectPath+"/app/build/outputs/apk/"+line;
+					// Signing the apk file
+					p = signApk(unsignedPath,projectPath+keystorePath);
+					write(p, out, buffer);
+					// Verifying the signature of the apk
+					p = verifySignedApk(unsignedPath);
+					write(p, out, buffer);
+					// Aligning the apk
+					p = alignApk(compilerName, projectPath, unsignedPath);
+					write(p, out, buffer);
+					cal = Calendar.getInstance();
+					out.write(cal.getTime().toString().getBytes());
+					out.close();
+					// Moving the apk to the specified folder
+					moveApk(projectPath, compilerName, androidPath);
+				}
+				else System.out.println("Gradle file doesn't have executing permissions");
+				
+			} catch (IOException e) {} 
+			catch (InterruptedException e) {}
+		}
+	}
+
+	private Process alignApk(String compilerName, String path,
+			String unsignedPath) throws IOException {
+		Process p;
+		p = Runtime.getRuntime().exec("your_path/android-sdk-linux/tools/zipalign -v 4 "+unsignedPath+" "+path+"/"+compilerName+".apk");
+		return p;
+	}
+
+	private Process verifySignedApk(String unsignedPath) throws IOException {
+		Process p;
+		p = Runtime.getRuntime().exec("jarsigner -verify -verbose -certs "+unsignedPath);
+		return p;
+	}
+
+	private Process signApk(String unsignedPath, String keystorePath)
+			throws IOException, InterruptedException {
+		Process p;
+		p = Runtime.getRuntime().exec("jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 "+
+				"-keystore "+keystorePath+" "+unsignedPath+"your_name");
+		PrintStream ps = new PrintStream(p.getOutputStream());
+		ps.flush();
+		p.waitFor();
+		return p;
+	}
+
+	private String getApkFileName(String path) throws IOException {
+		String line;
+		Process p;
+		p = Runtime.getRuntime().exec("ls "+path+"/app/build/outputs/apk");
+		BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+		while((line = reader.readLine())!=null){
+			if(line.contains("unsigned")) break;
+		}
+		reader.close();
+		return line;
+	}
+
+	private Process generateUnsigned(String gradlePath, File file)
+			throws IOException, InterruptedException {
+		Process p;
+		p = Runtime.getRuntime().exec(gradlePath+" assembleRelease",null,file);
+		p.waitFor();
+		return p;
+	}
+
+	private void write(Process p, OutputStream out, byte[] buffer)
+			throws IOException {
+		InputStream in;
+		int cnt;
+		in = new BufferedInputStream( p.getInputStream()); //Storing the output of the process
+		while ( (cnt = in.read(buffer)) != -1) {
+		   out.write(buffer, 0, cnt );
+		}
+		in.close();
+	}
+	
+	private void moveApk(String path, String compilerName, String folderPath) throws IOException{
+		Runtime.getRuntime().exec("mv "+path+"/"+compilerName+".apk "+folderPath);
+	}
+
+}
