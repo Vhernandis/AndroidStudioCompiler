@@ -1,0 +1,25 @@
+
+public class TestCompiler {
+
+	public static void main(String[] args) {
+		
+		Thread androidThread;
+		Thread iosThread;
+		
+		// Test for Release compiler
+		for(int i=1; i<=3; i++){
+			androidThread = new ReleaseCompiler();
+			androidThread.setName("Android"+i);
+			androidThread.start();
+		}
+		
+		// Test for Debug compiler
+		for(int i=1; i<=6; i++){
+			androidThread = new DebugCompiler();
+			androidThread.setName("Android"+i);
+			androidThread.start();
+		}
+
+	}
+
+}
