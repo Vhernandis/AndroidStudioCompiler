@@ -1,0 +1,65 @@
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+
+public class DebugCompiler extends Thread{
+	
+	final static String androidPath = "debug_directory_path";
+
+	public void run(){
+		
+		String compilerName = this.getName(); // Getting the name of the thread
+		String projectPath, gradlePath, fileStorePath;
+		Process p;
+		File file, gradleFile;
+		OutputStream out = null;
+		InputStream in;
+		int cnt;
+		byte[] buffer = new byte[1024];
+		
+		fileStorePath = androidPath+compilerName+"-debug.txt";
+		
+		projectPath = "your_AndroidStudio_project_directory"+"name_of_the_project";		
+		file = new File(projectPath);
+		if(!file.exists() || !file.isDirectory())
+			try {
+				throw new FileNotFoundException("Malformated path");
+			} catch (FileNotFoundException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+		else{
+			try {
+				gradlePath = file.getAbsolutePath()+"/gradlew";
+				gradleFile = new File(gradlePath);
+				//Execute permissions for gradlew
+				if(gradleFile.isFile() && !gradleFile.canExecute())	p = Runtime.getRuntime().exec("chmod +x "+gradlePath);				
+				else if(gradleFile.isFile() && gradleFile.canExecute()){
+					//Generates the .apk in debug mode
+					p = Runtime.getRuntime().exec(gradlePath+" assembleDebug",null,file);
+					p.waitFor();
+					// Writes the output
+					out = new BufferedOutputStream( new FileOutputStream(fileStorePath));
+					in = new BufferedInputStream( p.getInputStream());
+					while ( (cnt = in.read(buffer)) != -1) {
+					   out.write(buffer, 0, cnt );
+					}
+					in.close();
+					out.close();
+					// Moves the apk to the desired folder
+					p = Runtime.getRuntime().exec("mv "+projectPath+"/app/build/outputs/apk/app-debug.apk "+androidPath);
+				}
+				else System.out.println("Gradle file doesn't have executing permissions");
+			} catch (IOException e) {}
+			catch (InterruptedException e) {}
+		}
+		
+	}
+
+}
